@@ -1,11 +1,16 @@
 import React, { useState } from 'react';
+import { addOrder } from '../services/orderService';
+import { Timestamp } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 
-const Payment = ({ order, clearOrder }) => {
+const Payment = ({ order, clearOrder, clientName, selectedTable }) => {
   const [discountCode, setDiscountCode] = useState('');
   const [discount, setDiscount] = useState(0);
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const navigate = useNavigate();
 
   const validDiscountCodes = {
-    'EMMETT': 0.1, 
+    EMMETT: 0.1,
   };
 
   const handleApplyDiscount = () => {
@@ -18,39 +23,42 @@ const Payment = ({ order, clearOrder }) => {
     }
   };
 
-  const handlePay = () => {
-    if (order.length === 0) return; 
-
-    const orderData = {
-      orderItems: order.map((item) => ({
-        name: item.name,
-        price: item.price,
-        quantity: item.quantity,
-        total: item.price * item.quantity,
-      })),
-      totalAmount: totalWithDiscount,
-    };
-
-    const fileName = 'NoSeQueEstoyHaciendo.json';
-    const json = JSON.stringify(orderData, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const href = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = href;
-    link.download = fileName;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
-    clearOrder();
-    alert('Gracias por su compra!');
-  };
-
   const totalAmount = order.reduce((total, item) => total + item.price * item.quantity, 0);
   const totalWithDiscount = totalAmount - totalAmount * discount;
 
+  const handlePay = async () => {
+    if (order.length === 0 || paymentMethod === '') {
+      alert('Seleccione un método de pago.');
+      return;
+    }
+
+    const orderData = {
+      items: order.map((item) => ({
+        name: item.name,
+        price: item.price,
+        quantity: item.quantity,
+      })),
+      payment: paymentMethod,
+      timestamp: Timestamp.now(),
+      total: totalWithDiscount,
+      client: clientName,
+      state: "En preparación",
+      table_number : selectedTable
+    };
+
+    try {
+      await addOrder(orderData);
+      alert('Orden guardada en la base de datos.');
+      clearOrder();
+      navigate('/');
+    } catch (error) {
+      console.error('Error al guardar la orden:', error);
+      alert('Hubo un problema al guardar la orden.');
+    }
+  };
+
   return (
-    <div className="mt-10 p-6 bg-white shadow-lg rounded-lg border-2 border-green-500">
+    <div className="mb-50 mt-10 p-6 bg-white shadow-lg rounded-lg border-2 border-green-500">
       <div className="mb-4">
         <input
           type="text"
@@ -66,14 +74,31 @@ const Payment = ({ order, clearOrder }) => {
           Aplicar
         </button>
       </div>
+      <div className="mb-4">
+        <label htmlFor="paymentMethod" className="block text-lg font-semibold mb-2">
+          Método de Pago:
+        </label>
+        <select
+          id="paymentMethod"
+          value={paymentMethod}
+          onChange={(e) => setPaymentMethod(e.target.value)}
+          className="border-2 border-yellow-600 rounded-lg p-2 w-full"
+        >
+          <option value="">Seleccione un método de pago</option>
+          <option value="cash">Efectivo</option>
+          <option value="card">Tarjeta</option>
+        </select>
+      </div>
       <div className="flex justify-between font-bold text-lg text-red-600">
         <span>Total con descuento:</span>
         <span>${totalWithDiscount.toFixed(2)}</span>
       </div>
       <button
         onClick={handlePay}
-        className={`mt-5 w-full ${order.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'} text-white px-4 py-2 rounded-lg`}
-        disabled={order.length === 0} 
+        className={`mt-5 w-full ${
+          order.length === 0 ? 'bg-gray-400 cursor-not-allowed' : 'bg-green-600 hover:bg-green-700'
+        } text-white px-4 py-2 rounded-lg`}
+        disabled={order.length === 0}
       >
         Pagar
       </button>
@@ -82,3 +107,4 @@ const Payment = ({ order, clearOrder }) => {
 };
 
 export default Payment;
+
